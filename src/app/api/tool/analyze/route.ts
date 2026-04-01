@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchWithRetry } from "@/lib/api-retry";
+import { trackAndLog } from "@/lib/cost-tracker";
 
 interface AnalyzeInput {
   description: string;
@@ -71,7 +73,8 @@ ${input.description}
 
 Map out where their time actually goes, identify wasted hours, and create an action plan.`;
 
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const startTime = Date.now();
+    const res = await fetchWithRetry("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -87,7 +90,7 @@ Map out where their time actually goes, identify wasted hours, and create an act
           { role: "user", content: userPrompt },
         ],
       }),
-    });
+    }, { maxRetries: 2 });
 
     if (!res.ok) {
       console.error("OpenRouter error:", await res.text());
@@ -95,6 +98,7 @@ Map out where their time actually goes, identify wasted hours, and create an act
     }
 
     const json = await res.json();
+    await trackAndLog("time-reality", json, model, undefined, Date.now() - startTime);
     const text: string = json.choices?.[0]?.message?.content ?? "";
     const cleanText = text
       .replace(/```json\n?/g, "")
